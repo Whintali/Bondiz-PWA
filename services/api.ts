@@ -12,20 +12,29 @@ export type StrapiError = {
   details: any;
 };
 
+// Messages anglais renvoyés par Strapi lui-même.
+const KNOWN_ERRORS: [RegExp, string][] = [
+  [/invalid identifier or password/i, "Adresse email ou mot de passe incorrect."],
+  [/email or username are already taken|email is already taken/i, "Cette adresse email est déjà utilisée."],
+  [/username is already taken/i, "Ce nom d'utilisateur est déjà utilisé."],
+  [/incorrect code provided/i, "Ce lien n’est plus valable. Fais une nouvelle demande."],
+  [/passwords do not match/i, "Les mots de passe ne correspondent pas."],
+  [/too many requests/i, "Trop de tentatives. Réessaie dans quelques minutes."],
+  [/password must be at least/i, "Le mot de passe doit contenir au moins 8 caractères."],
+];
+
+// Les messages de l'API Bondiz sont rédigés en français pour l'utilisateur :
+// on les affiche tels quels. Un message anglais inconnu reste masqué.
+const looksEnglish = (message: string) =>
+  /^[\x20-\x7E]*$/.test(message) &&
+  /\b(the|is|are|was|must|not|invalid|provided|required|please|cannot|forbidden|found|error|unexpected|something)\b/i.test(message);
+
 const translateError = (message: string | undefined): string => {
   if (!message) return "Une erreur inattendue est survenue.";
 
-  const lowerMessage = message.toLowerCase();
-
-  if (lowerMessage.includes("invalid identifier or password")) {
-    return "Adresse email ou mot de passe incorrect.";
-  }
-  if (lowerMessage.includes("email or username are already taken") || lowerMessage.includes("email is already taken")) {
-    return "Cette adresse email est déjà utilisée.";
-  }
-  if (lowerMessage.includes("username is already taken")) {
-    return "Ce nom d'utilisateur est déjà utilisé.";
-  }
+  const known = KNOWN_ERRORS.find(([pattern]) => pattern.test(message));
+  if (known) return known[1];
+  if (!looksEnglish(message)) return message;
 
   return "Une erreur est survenue. Veuillez réessayer.";
 };

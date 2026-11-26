@@ -17,6 +17,8 @@ export type User = {
   age?: number | string;
   gender?: string;
   city?: string;
+  /** Visible seulement par son propriétaire (/users/me). */
+  phone?: string;
   interestTags?: { id: number; name: string; category?: { id: number; name: string } }[];
   image?: string;
   bio?: string;

@@ -1,10 +1,17 @@
+import DateTimePickerModal from "@/components/DatePickerModal";
+import BackButton from "@/components/ui/BackButton";
+import InterestChip from "@/components/ui/InterestChip";
+import OutlinedField from "@/components/ui/OutlinedField";
+import ProgressDots from "@/components/ui/ProgressDots";
+import ShadowButton from "@/components/ui/ShadowButton";
 import { COLORS } from "@/constants/Colors";
-import { IMAGES } from "@/constants/Image";
-import { globalStyles } from "@/constants/Styles";
+import { DESIGN } from "@/constants/Design";
+import { FONTS } from "@/constants/Fonts";
+import { calculateAge, toCalendarDate } from "@/utils/date";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,643 +20,378 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import DateTimePickerModal from "@/components/DatePickerModal";
-import { showAlert } from "@/utils/alert";
-import * as ImagePicker from "expo-image-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api";
-import Input from "./components/Input";
 
 type Interet = { id: number; name: string };
-type CategorieInterets = { id: number; name: string; icon?: string; interests: Interet[] };
+type CategorieInterets = { id: number; name: string; interests: Interet[] };
+
+const TOTAL_STEPS = 5;
+const MIN_INTERESTS = 5;
+
+const GENDERS = [
+  { label: "Je suis un homme", value: "homme" },
+  { label: "Je suis une femme", value: "femme" },
+  { label: "Je suis non-genré", value: "non-genré" },
+];
+
+const maxBirthdate = () => {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 18);
+  return date;
+};
 
 export default function QuestionnaireScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ firstName: string; email: string; password: string }>();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ email: string; password: string; phone?: string }>();
   const { register } = useAuth();
-  
-  const [currentStep, setCurrentStep] = useState(1);
-  const [selectedGender, setSelectedGender] = useState<string | null>(null);
-  const [birthdate, setBirthdate] = useState<Date | null>(null);
-  const [city, setCity] = useState("");
-  const [selectedInterests, setSelectedInterests] = useState<number[]>([]);
-  const [categories, setCategories] = useState<CategorieInterets[]>([]);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
-  const [firstName, setFirstName] = useState(params.firstName ?? "");
+
+  const [step, setStep] = useState(1);
+  const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  const [hideLastName, setHideLastName] = useState(false);
+  const [gender, setGender] = useState<string | null>(null);
+  const [city, setCity] = useState("");
+  const [birthdate, setBirthdate] = useState<Date | null>(null);
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
+  const [interests, setInterests] = useState<Interet[]>([]);
+  const [selectedInterests, setSelectedInterests] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const options = [
-    { label: "Homme", value: "homme" },
-    { label: "Femme", value: "femme" },
-  ];
+  useEffect(() => {
+    const chargerCatalogue = async () => {
+      try {
+        const res = await apiFetch<any>("/interest-categories?populate=interests&sort=sortOrder:asc");
+        const categories: CategorieInterets[] = res.data ?? [];
+        setInterests(categories.flatMap((category) => category.interests ?? []));
+      } catch (err) {
+        console.error("Chargement des centres d'intérêt impossible", err);
+        setError("Impossible de charger les centres d'intérêt. Vérifiez votre connexion.");
+      }
+    };
+    chargerCatalogue();
+  }, []);
 
-  const showDatePicker = () => {
-    setDatePickerVisibility(true);
+  const goBack = () => {
+    setError(null);
+    if (step === 1) router.back();
+    else setStep(step - 1);
   };
 
-  const hideDatePicker = () => {
-    setDatePickerVisibility(false);
+  const next = () => {
+    setError(null);
+    if (step === 1 && !firstName.trim()) return setError("Indique ton prénom pour continuer.");
+    if (step === 3 && !city.trim()) return setError("Indique ta ville pour continuer.");
+    if (step === 4 && !birthdate) return setError("Indique ta date de naissance pour continuer.");
+    setStep(step + 1);
   };
 
-  const handleConfirmDate = (date: Date) => {
-    const today = new Date();
-    const minBirthdate = new Date(
-      today.getFullYear() - 18,
-      today.getMonth(),
-      today.getDate()
-    );
-    if (date > minBirthdate) {
-      setError("Vous devez avoir au moins 18 ans pour vous inscrire.");
-      hideDatePicker();
+  const chooseGender = (value: string) => {
+    setGender(value);
+    setError(null);
+    setStep(3);
+  };
+
+  const confirmBirthdate = (date: Date) => {
+    setDatePickerVisible(false);
+    if (date > maxBirthdate()) {
+      setError("Tu dois avoir au moins 18 ans pour t’inscrire.");
       return;
     }
     setError(null);
     setBirthdate(date);
-    hideDatePicker();
   };
 
-  useEffect(() => {
-    const chargerCategories = async () => {
-      try {
-        const res = await apiFetch<any>(
-          "/interest-categories?populate=interests&sort=sortOrder:asc"
-        );
-        const chargees: CategorieInterets[] = res.data ?? [];
-        setCategories(chargees);
-        // La première catégorie est dépliée d'office.
-        if (chargees.length > 0) setExpandedCategories([chargees[0].name]);
-      } catch (error) {
-        console.error("Chargement des centres d'intérêt impossible", error);
-        setError("Impossible de charger les centres d'intérêt. Vérifiez votre connexion.");
-      }
-    };
-    chargerCategories();
-  }, []);
-
-  const toggleCategory = (title: string) => {
-    if (expandedCategories.includes(title)) {
-      setExpandedCategories(expandedCategories.filter(t => t !== title));
-    } else {
-      setExpandedCategories([...expandedCategories, title]);
-    }
+  const toggleInterest = (id: number) => {
+    setSelectedInterests((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    );
   };
 
-  const toggleInterest = (interestId: number) => {
-    if (selectedInterests.includes(interestId)) {
-      setSelectedInterests(selectedInterests.filter(i => i !== interestId));
-    } else {
-      setSelectedInterests([...selectedInterests, interestId]);
-    }
-  };
-
-  const formatDate = (date: Date | null) => {
-    if (!date) return "";
-    return date.toLocaleDateString("fr-FR");
-  };
-
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showAlert('Permission requise', 'Nous avons besoin d\'accéder à vos photos pour ajouter une photo de profil.');
+  const finish = async () => {
+    if (selectedInterests.length < MIN_INTERESTS) {
+      setError(`Choisis au moins ${MIN_INTERESTS} centres d’intérêt (${selectedInterests.length}/${MIN_INTERESTS}).`);
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setProfileImage(result.assets[0].uri);
-      setError(null);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentStep === 1) {
-      if (!selectedGender || !birthdate) return;
-      setError(null);
-      setCurrentStep(2);
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (!profileImage || !city || !firstName.trim() || selectedInterests.length < 5) {
-      setError("Veuillez renseigner votre prénom, votre ville, ajouter une photo et choisir au moins 5 intérêts.");
+    const { email, password, phone } = params;
+    if (!email || !password) {
+      setError("Informations d'inscription manquantes. Recommence depuis l’inscription.");
       return;
     }
 
     try {
       setIsSubmitting(true);
       setError(null);
-      
-      const { email, password } = params;
 
-      if (!firstName.trim() || !email || !password) {
-        throw new Error("Informations d'inscription manquantes. Veuillez recommencer.");
-      }
-
-      // Formatage de la date en YYYY-MM-DD pour Strapi
-      const formattedDate = birthdate?.toISOString().split("T")[0];
-
-      await register(params.firstName ?? firstName, email, password, {
+      await register(firstName.trim(), email, password, {
         firstName: firstName.trim(),
-        lastName: lastName.trim() || undefined,
-        gender: selectedGender || undefined,
-        age: formattedDate,
-        city,
-        // Relation vers le catalogue : on envoie des identifiants.
+        // Le nom n'est jamais public ; on ne le garde pas si l'utilisateur ne le souhaite pas.
+        lastName: hideLastName ? undefined : lastName.trim() || undefined,
+        gender: gender ?? undefined,
+        // Strapi attend une date au format AAAA-MM-JJ.
+        age: birthdate ? toCalendarDate(birthdate) : undefined,
+        city: city.trim(),
+        ...(phone ? { phone } : {}),
         interestTags: selectedInterests,
-      }, profileImage);
-      
+      });
+
       router.replace("/");
     } catch (err: any) {
       console.error("Failed to register user", err);
-      setError(err.message || "Impossible de finaliser votre inscription.");
+      setError(err.message || "Impossible de finaliser ton inscription.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const age = birthdate ? calculateAge(birthdate.getTime()) : null;
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={globalStyles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.logoContainer}>
-          <Image source={IMAGES.LOGO} style={styles.logo} resizeMode="contain" />
+        <BackButton onPress={goBack} />
+        <View style={styles.dots}>
+          <ProgressDots step={step} total={TOTAL_STEPS} />
         </View>
 
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: currentStep === 1 ? "66.66%" : "100%" }]} />
-        </View>
-
-        {currentStep === 1 ? (
-          <>
-            <Text style={styles.stepText}>Étape 2/3</Text>
-            <Text style={styles.title}>QUEL EST VOTRE GENRE ?</Text>
-
-            {error && <Text style={styles.errorText}>{error}</Text>}
-
-            <View style={styles.radioGroup}>
-              {options.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={styles.radioOption}
-                  onPress={() => setSelectedGender(option.value)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.radioCircle}>
-                    {selectedGender === option.value && (
-                      <View style={styles.innerCircle} />
-                    )}
-                  </View>
-                  <Text style={styles.radioLabel}>{option.label}</Text>
-                </TouchableOpacity>
-              ))}
+        {step === 1 && (
+          <View style={styles.step}>
+            <View>
+              <Text style={styles.hello}>Salut toi !</Text>
+              <Image source={DESIGN.sousLogo} style={styles.sousLogo} contentFit="contain" />
             </View>
+            <Text style={styles.question}>Tu t’appelles comment ?</Text>
 
-            <View style={styles.inputContainer}>
-              <TouchableOpacity onPress={showDatePicker} activeOpacity={0.7}>
-                <View pointerEvents="none">
-                  <Input
-                    label="Quelle est votre date de naissance ?"
-                    placeholder="JJ/MM/AAAA"
-                    value={formatDate(birthdate)}
-                    editable={false}
-                    icon="calendar-outline"
-                  />
-                </View>
-              </TouchableOpacity>
+            <View style={styles.fields}>
+              <OutlinedField label="Prénom" value={firstName} onChangeText={setFirstName} autoComplete="given-name" />
+              <OutlinedField
+                label="Nom"
+                value={lastName}
+                onChangeText={setLastName}
+                autoComplete="family-name"
+                editable={!hideLastName}
+              />
             </View>
 
             <TouchableOpacity
-              style={[
-                globalStyles.ctaButton,
-                styles.confirmButton,
-                (!selectedGender || !birthdate) && { opacity: 0.5 },
-              ]}
-              onPress={handleNext}
-              disabled={!selectedGender || !birthdate}
+              style={styles.checkboxRow}
+              onPress={() => setHideLastName((value) => !value)}
+              accessibilityRole="checkbox"
+              aria-checked={hideLastName}
             >
-              <Text style={globalStyles.ctaText}>Suivant</Text>
+              <View style={[styles.checkbox, hideLastName && styles.checkboxChecked]} />
+              <Text style={styles.checkboxLabel}>Je ne souhaite pas afficher mon nom de famille sur mon profil</Text>
             </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <Text style={styles.stepText}>Étape 3/3</Text>
-            <Text style={styles.title}>Dites-nous en plus</Text>
-
-            {error && <Text style={styles.errorText}>{error}</Text>}
-
-            <View style={styles.imagePickerContainer}>
-              <TouchableOpacity onPress={pickImage} style={styles.imagePickerButton} activeOpacity={0.8}>
-                {profileImage ? (
-                  <View>
-                    <Image source={{ uri: profileImage }} style={styles.profilePhoto} />
-                    <View style={styles.addPhotoIconContainer}>
-                      <Ionicons name="pencil" size={16} color="white" />
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.imagePickerPreview}>
-                    <Ionicons name="camera" size={40} color={COLORS.pink} />
-                    <Text style={styles.imagePickerText}>Ajouter une photo</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.stepTitle}>Comment vous appelez-vous ?</Text>
-
-            <View style={styles.inputContainer}>
-              <Input
-                placeholder="Prénom"
-                value={firstName}
-                onChangeText={setFirstName}
-                icon="person-outline"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Input
-                placeholder="Nom (facultatif)"
-                value={lastName}
-                onChangeText={setLastName}
-                icon="person-outline"
-              />
-            </View>
-
-            <Text style={styles.stepTitle}>Où habitez-vous ?</Text>
-
-            <View style={styles.inputContainer}>
-              <Input
-                placeholder="Ex: Paris"
-                value={city}
-                onChangeText={setCity}
-                icon="location-outline"
-              />
-            </View>
-
-            <Text style={styles.stepTitle}>Quels sont vos centres d'intérêt ?</Text>
-            <Text style={styles.counterText}>Sélectionnez au moins 5 ({selectedInterests.length}/5)</Text>
-
-            <View style={styles.categoriesContainer}>
-              {categories.map((category) => {
-                const isExpanded = expandedCategories.includes(category.name);
-                const selectedInCategory = (category.interests ?? []).filter(i => selectedInterests.includes(i.id)).length;
-                
-                return (
-                  <View key={category.id} style={styles.categoryWrapper}>
-                    <TouchableOpacity
-                      style={styles.categoryHeader}
-                      onPress={() => toggleCategory(category.name)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.headerLeft}>
-                        <Ionicons name={(category.icon ?? "pricetag-outline") as any} size={20} color={COLORS.pink} style={styles.categoryIcon} />
-                        <Text style={styles.categoryTitle}>{category.name}</Text>
-                        {selectedInCategory > 0 && (
-                          <View style={styles.categoryBadge}>
-                            <Text style={styles.categoryBadgeText}>{selectedInCategory}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Ionicons 
-                        name={isExpanded ? "chevron-up" : "chevron-down"} 
-                        size={20} 
-                        color={COLORS.main} 
-                      />
-                    </TouchableOpacity>
-
-                    {isExpanded && (
-                      <View style={styles.interestsGrid}>
-                        {(category.interests ?? []).map((interest) => {
-                          const isSelected = selectedInterests.includes(interest.id);
-                          return (
-                            <TouchableOpacity
-                              key={interest.id}
-                              style={[styles.interestChip, isSelected && styles.interestChipSelected]}
-                              onPress={() => toggleInterest(interest.id)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.interestText, isSelected && styles.interestTextSelected]}>
-                                {interest.name}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={styles.buttonGroup}>
-              <TouchableOpacity
-                style={[styles.backButton]}
-                onPress={() => setCurrentStep(1)}
-              >
-                <Text style={styles.backButtonText}>Retour</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  globalStyles.ctaButton,
-                  styles.confirmButtonStep2,
-                  (!profileImage || !city || selectedInterests.length < 5 || isSubmitting) && { opacity: 0.5 },
-                ]}
-                onPress={handleConfirm}
-                disabled={!profileImage || !city || selectedInterests.length < 5 || isSubmitting}
-              >
-                <Text style={globalStyles.ctaText}>
-                  {isSubmitting ? "Chargement..." : "Confirmer"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
+          </View>
         )}
 
-        <DateTimePickerModal
-          isVisible={isDatePickerVisible}
-          mode="date"
-          onConfirm={handleConfirmDate}
-          onCancel={hideDatePicker}
-          confirmTextIOS="Confirmer"
-          cancelTextIOS="Annuler"
-          locale="fr-FR"
-          maximumDate={(() => {
-            const d = new Date();
-            d.setFullYear(d.getFullYear() - 18);
-            return d;
-          })()}
-        />
+        {step === 2 && (
+          <View style={[styles.step, styles.stepCentered]}>
+            <Text style={styles.question}>Comment te définis-tu ?</Text>
+            <View style={styles.choices}>
+              {GENDERS.map((option) => (
+                <ShadowButton
+                  key={option.value}
+                  label={option.label}
+                  variant={gender === option.value ? "yellow" : "white"}
+                  onPress={() => chooseGender(option.value)}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {step === 3 && (
+          <View style={[styles.step, styles.stepCentered]}>
+            <Text style={styles.question}>Où vis-tu actuellement ?</Text>
+            <OutlinedField
+              width={283}
+              placeholder="Rechercher une ville"
+              value={city}
+              onChangeText={setCity}
+              autoComplete="postal-address-locality"
+              containerStyle={styles.cityField}
+            />
+          </View>
+        )}
+
+        {step === 4 && (
+          <View style={[styles.step, styles.stepCentered]}>
+            <Text style={styles.question}>Quel âge as-tu ?</Text>
+            <TouchableOpacity onPress={() => setDatePickerVisible(true)} style={styles.ageField} accessibilityRole="button">
+              <View style={{ pointerEvents: "none" }}>
+                <OutlinedField
+                  label="Âge"
+                  editable={false}
+                  value={age !== null ? `${age} ans` : ""}
+                  placeholder="Ta date de naissance"
+                />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {step === 5 && (
+          <View style={styles.step}>
+            <Text style={[styles.question, styles.hobbiesTitle]}>Sélectionne tes hobbies</Text>
+            <View style={styles.chips}>
+              {interests.map((interest) => (
+                <InterestChip
+                  key={interest.id}
+                  label={interest.name}
+                  tone="light"
+                  selected={selectedInterests.includes(interest.id)}
+                  onPress={() => toggleInterest(interest.id)}
+                />
+              ))}
+            </View>
+            <Text style={styles.counter}>
+              {selectedInterests.length}/{MIN_INTERESTS} minimum
+            </Text>
+          </View>
+        )}
+
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        {step !== 2 && (
+          <ShadowButton
+            label={step === TOTAL_STEPS ? "Terminer" : "Suivant"}
+            onPress={step === TOTAL_STEPS ? finish : next}
+            loading={isSubmitting}
+            style={styles.nextButton}
+          />
+        )}
       </ScrollView>
+
+      <DateTimePickerModal
+        isVisible={isDatePickerVisible}
+        mode="date"
+        onConfirm={confirmBirthdate}
+        onCancel={() => setDatePickerVisible(false)}
+        confirmTextIOS="Confirmer"
+        cancelTextIOS="Annuler"
+        locale="fr-FR"
+        maximumDate={maxBirthdate()}
+      />
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.purple,
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 30,
-    paddingTop: 80,
-    paddingBottom: 40,
+    paddingHorizontal: 34,
+  },
+  dots: {
+    marginTop: 43,
+    marginLeft: 1,
+  },
+  step: {
     alignItems: "center",
-    justifyContent: "center",
+    marginTop: 66,
   },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 40,
+  stepCentered: {
+    marginTop: 160,
   },
-  logo: {
-    width: 100,
-    height: 100,
+  sousLogo: {
+    position: "absolute",
+    right: -36,
+    top: 8,
+    width: 29,
+    height: 29,
   },
-  progressBarContainer: {
-    width: "100%",
-    height: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 3,
-    marginBottom: 20,
-    overflow: "hidden",
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: COLORS.cta,
-    borderRadius: 3,
-  },
-  stepText: {
-    color: COLORS.cta,
-    fontFamily: "Poppins_700Bold",
-    fontSize: 14,
-    textTransform: "uppercase",
-    marginBottom: 5,
+  hello: {
+    fontFamily: FONTS.extraBold,
+    fontSize: 30,
+    color: "white",
     textAlign: "center",
   },
-  title: {
-    fontSize: 24,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    textAlign: "center",
-    marginBottom: 40,
-    textTransform: "uppercase",
-  },
-  errorText: {
-    color: COLORS.error,
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-    marginBottom: 15,
+  question: {
+    marginTop: 8,
+    fontFamily: FONTS.extraBold,
+    fontSize: 20,
+    color: "white",
     textAlign: "center",
   },
-  radioGroup: {
-    width: "100%",
-    paddingHorizontal: 20,
-    marginBottom: 30,
+  fields: {
+    marginTop: 40,
+    gap: 30,
   },
-  radioOption: {
+  checkboxRow: {
+    marginTop: 36,
+    width: 255,
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    justifyContent: "center",
+    alignItems: "flex-start",
+    gap: 11,
   },
-  radioCircle: {
-    height: 24,
-    width: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.pink,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 15,
+  checkbox: {
+    marginTop: 2,
+    width: 15,
+    height: 15,
+    borderWidth: 1.5,
+    borderColor: "white",
   },
-  innerCircle: {
-    height: 12,
-    width: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.pink,
+  checkboxChecked: {
+    backgroundColor: "white",
   },
-  radioLabel: {
-    fontSize: 18,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    width: 100,
-  },
-  inputContainer: {
-    width: "100%",
-    marginBottom: 40,
-  },
-  stepTitle: {
-    fontSize: 18,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    marginBottom: 10,
-    alignSelf: "flex-start",
-  },
-  counterText: {
-    fontSize: 14,
-    fontFamily: "Poppins_400Regular",
-    color: "rgba(255, 255, 255, 0.7)",
-    marginBottom: 20,
-    alignSelf: "flex-start",
-  },
-  categoriesContainer: {
-    width: "100%",
-    marginBottom: 20,
-  },
-  categoryWrapper: {
-    marginBottom: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 15,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-  },
-  categoryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 15,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
+  checkboxLabel: {
     flex: 1,
+    fontFamily: FONTS.medium,
+    fontSize: 14,
+    color: "white",
   },
-  categoryIcon: {
-    marginRight: 12,
+  choices: {
+    marginTop: 41,
+    gap: 26,
   },
-  categoryTitle: {
-    fontSize: 16,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    marginRight: 10,
+  cityField: {
+    marginTop: 55,
   },
-  categoryBadge: {
-    backgroundColor: COLORS.pink,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  ageField: {
+    marginTop: 49,
   },
-  categoryBadgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontFamily: "Poppins_700Bold",
+  hobbiesTitle: {
+    marginTop: 0,
   },
-  interestsGrid: {
+  chips: {
+    marginTop: 28,
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-start",
-    padding: 10,
-    paddingTop: 0,
-    marginBottom: 10,
+    justifyContent: "center",
+    gap: 12,
   },
-  interestChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: "rgba(249, 140, 215, 0.8)", // Vibrant COLORS.pink
-    margin: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-  },
-  interestChipSelected: {
-    backgroundColor: COLORS.cta,
-    borderColor: COLORS.cta,
-    elevation: 5,
-    boxShadow: "0px 2px 4px rgba(228, 246, 68, 0.3)",
-  },
-  interestText: {
-    color: COLORS.main,
-    fontFamily: "Poppins_700Bold",
-    fontSize: 14,
-  },
-  interestTextSelected: {
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.black,
-  },
-  buttonGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
+  counter: {
     marginTop: 20,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.8)",
   },
-  backButton: {
-    padding: 15,
+  nextButton: {
+    marginTop: 56,
   },
-  backButtonText: {
-    color: "rgba(255, 255, 255, 0.7)",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 16,
-  },
-  confirmButton: {
-    width: "100%",
-    height: 55,
-    borderRadius: 20,
-  },
-  confirmButtonStep2: {
-    flex: 1,
-    height: 55,
-    borderRadius: 15,
-    marginLeft: 10,
-  },
-  imagePickerContainer: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  imagePickerButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-    borderStyle: "dashed",
-  },
-  imagePickerPreview: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profilePhoto: {
-    width: 116,
-    height: 116,
-    borderRadius: 58,
-  },
-  addPhotoIconContainer: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: COLORS.cta,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: COLORS.black,
-  },
-  imagePickerText: {
-    color: "rgba(255, 255, 255, 0.7)",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 12,
-    marginTop: 5,
+  errorText: {
+    marginTop: 24,
+    alignSelf: "center",
+    maxWidth: 300,
+    color: "white",
+    backgroundColor: "rgba(0, 0, 36, 0.25)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
     textAlign: "center",
   },
 });

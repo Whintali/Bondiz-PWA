@@ -16,9 +16,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
+import { deleteMyAccount, exportMyData } from "../services/account";
 import { apiFetch } from "../services/api";
 import { showAlert } from "../utils/alert";
 import { disablePush, enablePush, getPushStatus, PushStatus } from "../utils/push";
+import { saveTextFile } from "../utils/saveFile";
 
 const PUSH_LABELS: Record<PushStatus, string> = {
   enabled: "Activées",
@@ -30,7 +32,7 @@ const PUSH_LABELS: Record<PushStatus, string> = {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, token, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [isPasswordModalVisible, setIsPasswordModalVisible] = React.useState(false);
   const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
@@ -41,6 +43,47 @@ export default function SettingsScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [pushStatus, setPushStatus] = React.useState<PushStatus | null>(null);
   const [pushBusy, setPushBusy] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = React.useState(false);
+  const [deletePassword, setDeletePassword] = React.useState("");
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  // RGPD, portabilité : toutes les données du compte dans un fichier JSON.
+  const handleExport = async () => {
+    if (!token) return;
+    try {
+      setExporting(true);
+      const data = await exportMyData(token);
+      await saveTextFile("bondiz-mes-donnees.json", JSON.stringify(data, null, 2));
+    } catch (error: any) {
+      showAlert("Erreur", error.message?.replace(/^\d+: /, "") || "Export impossible pour le moment.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // RGPD, effacement : suppression définitive, mot de passe redemandé.
+  const handleDeleteAccount = async () => {
+    if (!token) return;
+    if (!deletePassword) {
+      setDeleteError("Indique ton mot de passe pour confirmer.");
+      return;
+    }
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      await deleteMyAccount(token, deletePassword);
+      setIsDeleteModalVisible(false);
+      await logout();
+      router.replace("/welcome");
+      showAlert("Compte supprimé", "Ton compte et toutes tes données ont été effacés.");
+    } catch (error: any) {
+      setDeleteError(error.message?.replace(/^\d+: /, "") || "Suppression impossible pour le moment.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   React.useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -155,7 +198,7 @@ export default function SettingsScreen() {
             </Text>
             <View style={styles.bulletPoint}>
               <View style={styles.dot} />
-              <Text style={styles.bulletText}>Droit d'accès à vos données</Text>
+              <Text style={styles.bulletText}>Droit d’accès à vos données</Text>
             </View>
             <View style={styles.bulletPoint}>
               <View style={styles.dot} />
@@ -163,7 +206,7 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.bulletPoint}>
               <View style={styles.dot} />
-              <Text style={styles.bulletText}>Droit à l'effacement (droit à l'oubli)</Text>
+              <Text style={styles.bulletText}>Droit à l’effacement (droit à l’oubli)</Text>
             </View>
             <View style={styles.bulletPoint}>
               <View style={styles.dot} />
@@ -173,6 +216,22 @@ export default function SettingsScreen() {
               Pour toute demande, contactez notre délégué à la protection des données : bondizmydsu@gmail.com
             </Text>
           </View>
+          <TouchableOpacity style={styles.cardItem} onPress={handleExport} disabled={exporting} accessibilityRole="button">
+            <Text style={styles.cardItemText}>Télécharger mes données</Text>
+            <Text style={styles.cardItemValue}>{exporting ? "…" : "JSON"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cardItem}
+            onPress={() => {
+              setDeletePassword("");
+              setDeleteError(null);
+              setIsDeleteModalVisible(true);
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.cardItemText, styles.dangerText]}>Supprimer mon compte</Text>
+            <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -303,6 +362,52 @@ export default function SettingsScreen() {
               <Text style={styles.saveButtonText}>
                 {loading ? "Chargement..." : "MODIFIER"}
               </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isDeleteModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Supprimer mon compte</Text>
+              <TouchableOpacity onPress={() => setIsDeleteModalVisible(false)} accessibilityRole="button" accessibilityLabel="Fermer">
+                <Ionicons name="close" size={24} color={COLORS.black} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.cardText}>
+                Ton profil, tes photos, tes connexions, tes messages, tes réservations et tes favoris seront effacés
+                définitivement. Cette action est irréversible.
+              </Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Mot de passe</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    secureTextEntry
+                    value={deletePassword}
+                    onChangeText={setDeletePassword}
+                    accessibilityLabel="Mot de passe pour confirmer la suppression"
+                    autoComplete="current-password"
+                  />
+                </View>
+              </View>
+              {deleteError && <Text style={styles.dangerText}>{deleteError}</Text>}
+            </View>
+            <TouchableOpacity
+              style={[styles.saveButton, styles.dangerButton, deleting && styles.disabledButton]}
+              onPress={handleDeleteAccount}
+              disabled={deleting}
+              accessibilityRole="button"
+            >
+              <Text style={styles.saveButtonText}>{deleting ? "Suppression…" : "SUPPRIMER DÉFINITIVEMENT"}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -498,6 +603,12 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontFamily: "Poppins_700Bold",
+  },
+  dangerText: {
+    color: COLORS.error,
+  },
+  dangerButton: {
+    backgroundColor: COLORS.error,
   },
   disabledButton: {
     backgroundColor: COLORS.gray,

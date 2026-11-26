@@ -1,71 +1,48 @@
 import { COLORS } from "@/constants/Colors";
-import { Ionicons } from "@expo/vector-icons";
+import { DESIGN } from "@/constants/Design";
+import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
-import {
-  Dimensions,
-  StyleSheet,
-  TouchableOpacity,
-  View
-} from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width } = Dimensions.get("window");
+export type NavRoute = "home" | "activity" | "map" | "messages" | "profile";
 
-interface BottomNavProps {
-  currentRoute: "home" | "messages" | "profile" | "activity" | "agenda";
-}
+// Icônes Feather, la famille utilisée par la maquette.
+const TABS: { route: NavRoute; icon: keyof typeof Feather.glyphMap; label: string }[] = [
+  { route: "home", icon: "home", label: "Accueil" },
+  { route: "activity", icon: "compass", label: "Activités" },
+  { route: "map", icon: "map-pin", label: "Carte" },
+  { route: "messages", icon: "message-circle", label: "Messages" },
+  { route: "profile", icon: "user", label: "Profil" },
+];
 
-const BottomNav = ({ currentRoute }: BottomNavProps) => {
+// Barre de navigation flottante : pilule blanche, onglet actif dans une
+// pastille violette.
+const BottomNav = ({ currentRoute }: { currentRoute: NavRoute }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.bottomNavWrapper, { bottom: 25 + insets.bottom }]}>
-      <View style={styles.bottomNavBar}>
-        <TouchableOpacity 
-          style={[styles.navItem, currentRoute === "home" ? { backgroundColor: COLORS.cta } : { backgroundColor: COLORS.pink }]}
-          onPress={() => router.replace("/home")}
-        >
-          <Ionicons 
-            name={currentRoute === "home" ? "home" : "home-outline"} 
-            size={28} 
-            color={currentRoute === "home" ? COLORS.black : COLORS.main} 
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.navItem, currentRoute === "activity" ? { backgroundColor: COLORS.cta } : { backgroundColor: COLORS.pink }]}
-          onPress={() => router.replace("/activity")}
-        >
-          <Ionicons 
-            name={currentRoute === "activity" ? "happy" : "happy-outline"} 
-            size={28} 
-            color={currentRoute === "activity" ? COLORS.black : COLORS.main} 
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.navItem, currentRoute === "messages" ? { backgroundColor: COLORS.cta } : { backgroundColor: COLORS.pink }]}
-          onPress={() => router.replace("/messages")}
-        >
-          <Ionicons 
-            name={currentRoute === "messages" ? "chatbubble" : "chatbubble-outline"} 
-            size={28} 
-            color={currentRoute === "messages" ? COLORS.black : COLORS.main} 
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.navItem, currentRoute === "profile" ? { backgroundColor: COLORS.cta } : { backgroundColor: COLORS.pink }]}
-          onPress={() => router.replace("/profile")}
-        >
-          <Ionicons 
-            name={currentRoute === "profile" ? "person" : "person-outline"} 
-            size={28} 
-            color={currentRoute === "profile" ? COLORS.black : COLORS.main} 
-          />
-        </TouchableOpacity>
+    <View style={[styles.wrapper, { bottom: 26 + insets.bottom, pointerEvents: "box-none" }]}>
+      <View style={styles.bar} accessibilityRole="tablist">
+        {TABS.map(({ route, icon, label }) => {
+          const active = route === currentRoute;
+          return (
+            <TouchableOpacity
+              key={route}
+              style={styles.item}
+              onPress={() => !active && router.replace(`/${route}`)}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              aria-selected={active}
+            >
+              {active && <Image source={DESIGN.navActiveBubble} style={styles.bubble} />}
+              <Feather name={icon} size={25} color={active ? "white" : COLORS.purple} />
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -74,27 +51,32 @@ const BottomNav = ({ currentRoute }: BottomNavProps) => {
 export default BottomNav;
 
 const styles = StyleSheet.create({
-  bottomNavWrapper: {
+  wrapper: {
     position: "absolute",
     left: 0,
     right: 0,
     alignItems: "center",
   },
-  bottomNavBar: {
+  bar: {
+    width: 334,
+    height: 59,
+    borderRadius: 100,
+    backgroundColor: "white",
     flexDirection: "row",
-    backgroundColor: COLORS.purple,
-    borderRadius: 25,
-    padding: 10,
-    width: width * 0.9,
-    justifyContent: "space-around",
-    boxShadow: "0px 5px 5px rgba(0, 0, 0, 0.3)",
-  },
-  navItem: {
-    width: 55,
-    height: 55,
-    borderRadius: 18,
-    justifyContent: "center",
     alignItems: "center",
-    boxShadow: "0px 2px 2px rgba(0, 0, 0, 0.2)",
+    gap: 26,
+    paddingLeft: 18.5,
+    boxShadow: "0px 4px 4px rgba(163, 163, 163, 0.3)",
+  },
+  item: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bubble: {
+    position: "absolute",
+    width: 40,
+    height: 40,
   },
 });
