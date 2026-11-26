@@ -7,8 +7,11 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
   Poppins_400Regular,
   Poppins_500Medium,
+  Poppins_600SemiBold,
   Poppins_700Bold,
+  Poppins_800ExtraBold,
 } from "@expo-google-fonts/poppins";
+import { ArchivoBlack_400Regular } from "@expo-google-fonts/archivo-black";
 import { globalStyles } from "@/constants/Styles";
 import { IMAGES } from "@/constants/Image";
 import LoadingSpinner from "./components/loading";
@@ -23,7 +26,10 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
+    Poppins_600SemiBold,
     Poppins_700Bold,
+    Poppins_800ExtraBold,
+    ArchivoBlack_400Regular,
   });
 
   useEffect(() => {

@@ -1,6 +1,9 @@
 import { COLORS } from "@/constants/Colors";
-import { IMAGES } from "@/constants/Image";
-import { globalStyles } from "@/constants/Styles";
+import { DESIGN } from "@/constants/Design";
+import { FONTS } from "@/constants/Fonts";
+import InterestChip from "@/components/ui/InterestChip";
+import ScreenBackground from "@/components/ui/ScreenBackground";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -22,7 +25,6 @@ import {
 import * as Haptics from "expo-haptics";
 import {
   Dimensions,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,7 +35,7 @@ import {
   TextInput,
   Pressable
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, STRAPI_BASE_URL } from "../services/api";
 import { appendImage } from "../utils/upload";
@@ -142,7 +144,7 @@ export default function ProfileScreen() {
       await apiFetch<any>(`/users/${user?.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          username: editName,
+          firstName: editName.trim(),
           bio: editBio,
           self_image: orderedIds.length > 0 ? orderedIds : rawImages.map(img => img.id)
         }),
@@ -175,10 +177,14 @@ export default function ProfileScreen() {
     transform: [{ translateY: modalY.value }]
   }));
 
+  // Les contenus avec brouillon existent en deux versions (brouillon et
+  // publiée) : on compte les documents, pas les lignes.
+  const countDocuments = (...lists: any[][]) =>
+    new Set(lists.flatMap((list) => (list ?? []).map((item: any) => item.documentId ?? item.id))).size;
   const stats = {
-    likes: profileData?.likes?.length || 0,
-    matchs: (profileData?.matches?.length || 0) + (profileData?.matches2?.length || 0),
-    activities: profileData?.activities?.length || 0,
+    likes: countDocuments(profileData?.likes),
+    connexions: countDocuments(profileData?.matches, profileData?.matches2),
+    activities: countDocuments(profileData?.organizedBookings, profileData?.participatedBookings),
   };
 
   const rawImages: any[] = profileData?.self_image || [];
@@ -193,70 +199,108 @@ export default function ProfileScreen() {
   }).filter((url: string | null) => url !== null) || [];
 
   const avatarUrl = photos.length > 0 ? photos[0] : null;
+  const fullName = [profileData?.firstName, profileData?.lastName].filter(Boolean).join(" ") || profileData?.username || user?.username || "";
+  const interests: { id: number; name: string }[] = profileData?.interestTags || [];
+
+  // Semaine en cours, du lundi au dimanche, pour la carte « Agenda ».
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
 
   if (loading && !profileData) {
     return (
-      <View style={[globalStyles.container, globalStyles.center]}>
-        <ActivityIndicator size="large" color={COLORS.cta} />
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={COLORS.purple} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+    <View style={styles.container}>
+      <ScreenBackground source={DESIGN.profileBg} opacity={0.5} />
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>PROFIL</Text>
-          <TouchableOpacity style={styles.settingsButton} onPress={() => router.push("/settings")}>
-            <Ionicons name="settings-outline" size={20} color="white" />
+          <Text style={styles.headerTitle}>MON PROFIL</Text>
+          <TouchableOpacity onPress={() => router.push("/settings")} accessibilityRole="button" accessibilityLabel="Paramètres">
+            <Image source={DESIGN.iconSettings} style={styles.settingsIcon} contentFit="contain" />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.profileInfo}>
-          <View style={styles.avatarContainer}>
-            <Image source={avatarUrl ? { uri: avatarUrl } : undefined} style={styles.avatar} />
+        <View style={styles.identityCard}>
+          <View style={styles.avatarRing}>
+            {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatar} contentFit="cover" /> : <View style={styles.avatar} />}
           </View>
-          <View style={styles.nameContainer}>
-            <Text style={styles.userName}>{profileData?.username || user?.username || "Bondiz User"}</Text>
+          <View style={styles.identity}>
+            <Text style={styles.userName} numberOfLines={1}>{fullName}</Text>
+            {profileData?.username ? <Text style={styles.handle} numberOfLines={1}>{profileData.username}</Text> : null}
+            <View style={styles.chips}>
+              {interests.slice(0, 4).map((interest) => (
+                <InterestChip key={interest.id} label={interest.name} size="small" />
+              ))}
+            </View>
           </View>
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={[styles.statBox, { backgroundColor: COLORS.pink }]}>
-            <Text style={styles.statNumber}>{stats.likes}</Text>
-            <Text style={styles.statLabel}>Likes</Text>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: COLORS.cta }]}>
-            <Text style={[styles.statNumber, { color: COLORS.black }]}>{stats.matchs}</Text>
-            <Text style={[styles.statLabel, { color: COLORS.black }]}>Matchs</Text>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: COLORS.purple }]}>
-            <Text style={styles.statNumber}>{stats.activities}</Text>
-            <Text style={styles.statLabel}>Activités</Text>
-          </View>
+        <View style={styles.statsRow}>
+          {[
+            { value: stats.likes, label: "Likes" },
+            { value: stats.connexions, label: "Connexions" },
+            { value: stats.activities, label: "Activités" },
+          ].map((stat) => (
+            <View key={stat.label} style={styles.statBox}>
+              <Text style={styles.statNumber}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
         </View>
 
         <TouchableOpacity
-          style={styles.pencilButton}
+          style={styles.editButton}
           onPress={() => {
-            setEditName(profileData?.username || "");
+            setEditName(profileData?.firstName || profileData?.username || "");
             setEditBio(profileData?.bio || "");
             setEditModalVisible(true);
             modalY.value = 0;
           }}
+          accessibilityRole="button"
         >
-          <Ionicons name="pencil" size={20} color="white" />
+          <Text style={styles.editButtonText}>Modifier mon profil</Text>
         </TouchableOpacity>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-          {photos.map((item: string, index: number) => (
-            <Image key={index} source={{ uri: item }} style={styles.miniPhoto} />
+        <View style={styles.photos}>
+          {photos.slice(0, 5).map((uri: string, index: number) => (
+            <Image key={uri} source={{ uri }} style={styles.photoTile} contentFit="cover" accessibilityLabel={`Photo ${index + 1}`} />
           ))}
-          {photos.length === 0 && <Text style={{ color: COLORS.gray }}>Aucune photo</Text>}
-        </ScrollView>
+          <TouchableOpacity style={[styles.photoTile, styles.addTile]} onPress={handlePickImage} accessibilityRole="button" accessibilityLabel="Ajouter une photo">
+            <Text style={styles.addTileText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.agenda} onPress={() => router.push("/activity")} accessibilityRole="button" accessibilityLabel="Voir mes réservations">
+          <Text style={styles.agendaTitle}>AGENDA</Text>
+          <View style={styles.weekRow}>
+            {week.map((d) => {
+              const isToday = d.toDateString() === today.toDateString();
+              return (
+                <View key={d.toDateString()} style={styles.weekDay}>
+                  <Text style={styles.weekLetter}>{"DLMMJVS"[d.getDay()]}</Text>
+                  <View style={styles.weekCircle}>
+                    <Image source={isToday ? DESIGN.agendaDayActive : DESIGN.agendaDay} style={StyleSheet.absoluteFill} />
+                    <Text style={[styles.weekNumber, isToday && styles.weekNumberToday]}>{d.getDate()}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
 
         <Modal
           animationType="slide"
@@ -279,8 +323,8 @@ export default function ProfileScreen() {
                 </GestureDetector>
 
                 <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Prénom / Nom</Text>
-                  <TextInput style={styles.textInput} value={editName} onChangeText={setEditName} placeholder="Votre nom" />
+                  <Text style={styles.inputLabel}>Prénom</Text>
+                  <TextInput style={styles.textInput} value={editName} onChangeText={setEditName} placeholder="Ton prénom" />
                   
                   <Text style={styles.inputLabel}>Description</Text>
                   <TextInput style={[styles.textInput, { height: 100, textAlignVertical: "top" }]} value={editBio} onChangeText={setEditBio} placeholder="Décrivez-vous..." multiline />
@@ -318,7 +362,7 @@ export default function ProfileScreen() {
         </Modal>
       </ScrollView>
       <BottomNav currentRoute="profile" />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -378,21 +422,82 @@ const DraggablePhoto = ({ uri, index, onSwap, totalCount }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "white" },
-  scrollContent: { paddingHorizontal: 25, paddingTop: 20 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 30 },
-  headerTitle: { fontSize: 28, fontFamily: "Poppins_700Bold", color: "black" },
-  settingsButton: { width: 60, height: 45, backgroundColor: COLORS.purple, borderRadius: 10, justifyContent: "center", alignItems: "center", elevation: 3 },
-  profileInfo: { flexDirection: "row", alignItems: "center", marginBottom: 30 },
-  avatarContainer: { marginRight: 20 },
-  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.gray },
-  nameContainer: { flex: 1 },
-  userName: { fontSize: 24, fontFamily: "Poppins_700Bold", color: "black" },
-  statsContainer: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
-  statBox: { width: (width - 70) / 3, height: 100, borderRadius: 15, justifyContent: "center", alignItems: "center", padding: 10, elevation: 3 },
-  statNumber: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "white" },
-  statLabel: { fontSize: 13, fontFamily: "Poppins_700Bold", color: "white", textAlign: "center" },
-  pencilButton: { width: "100%", height: 50, borderRadius: 12, backgroundColor: COLORS.purple, justifyContent: "center", alignItems: "center", marginBottom: 30, elevation: 4 },
+  container: { flex: 1, backgroundColor: COLORS.white },
+  center: { alignItems: "center", justifyContent: "center" },
+  scrollContent: { paddingHorizontal: 15 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, paddingRight: 10, marginTop: 46 },
+  headerTitle: { fontFamily: FONTS.display, fontSize: 25, color: COLORS.ink },
+  settingsIcon: { width: 30, height: 30 },
+  identityCard: {
+    marginTop: 18,
+    backgroundColor: "white",
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 19,
+    paddingVertical: 17,
+    gap: 20,
+    boxShadow: "0px 4px 4px rgba(163, 163, 163, 0.3)",
+  },
+  avatarRing: { width: 129, height: 130, borderRadius: 65, borderWidth: 6, borderColor: COLORS.purple, overflow: "hidden", backgroundColor: COLORS.border },
+  avatar: { width: "100%", height: "100%", backgroundColor: COLORS.border },
+  identity: { flex: 1 },
+  userName: { fontFamily: FONTS.bold, fontSize: 20, color: COLORS.purple },
+  handle: { fontFamily: FONTS.medium, fontSize: 13, color: "black" },
+  chips: { marginTop: 4, flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  statsRow: { marginTop: 13, flexDirection: "row", gap: 12 },
+  statBox: {
+    flex: 1,
+    height: 58,
+    backgroundColor: "white",
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0px 4px 4px rgba(163, 163, 163, 0.3)",
+  },
+  statNumber: { fontFamily: FONTS.bold, fontSize: 20, lineHeight: 26, color: COLORS.purple },
+  statLabel: { fontFamily: FONTS.medium, fontSize: 15, color: "black" },
+  editButton: {
+    marginTop: 29,
+    alignSelf: "center",
+    width: 202,
+    height: 40,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: COLORS.ink,
+    backgroundColor: COLORS.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editButtonText: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.ink },
+  photos: { marginTop: 28, flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  photoTile: {
+    width: "31.2%",
+    aspectRatio: 116 / 148,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: COLORS.ink,
+    backgroundColor: COLORS.border,
+    boxShadow: "0px 4px 4px rgba(163, 163, 163, 0.3)",
+  },
+  addTile: { backgroundColor: "rgba(255, 255, 255, 0.4)", alignItems: "center", justifyContent: "center" },
+  addTileText: { fontFamily: FONTS.bold, fontSize: 30, color: COLORS.purple },
+  agenda: {
+    marginTop: 21,
+    backgroundColor: "white",
+    borderRadius: 20,
+    paddingHorizontal: 29,
+    paddingTop: 19,
+    paddingBottom: 19,
+    boxShadow: "0px 4px 4px rgba(163, 163, 163, 0.3)",
+  },
+  agendaTitle: { fontFamily: FONTS.display, fontSize: 20, color: "black" },
+  weekRow: { marginTop: 11, flexDirection: "row", justifyContent: "space-between" },
+  weekDay: { alignItems: "center", gap: 4 },
+  weekLetter: { fontFamily: FONTS.bold, fontSize: 14, color: COLORS.pink },
+  weekCircle: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  weekNumber: { fontFamily: FONTS.medium, fontSize: 14, color: "black" },
+  weekNumberToday: { color: "white" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   modalContent: { width: width - 40, height: height * 0.75, backgroundColor: "white", borderRadius: 30, padding: 20, elevation: 10, overflow: "hidden" },
   modalHandle: { width: 50, height: 5, backgroundColor: "#E0E0E0", borderRadius: 2.5, alignSelf: "center", marginBottom: 15 },

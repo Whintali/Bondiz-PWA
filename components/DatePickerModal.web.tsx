@@ -62,13 +62,14 @@ function PickerCard({ mode = "date", date, minimumDate, maximumDate, onConfirm, 
           style={inputStyle}
         />
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.button} onPress={onCancel}>
+          <TouchableOpacity style={styles.button} onPress={onCancel} accessibilityRole="button">
             <Text style={styles.cancelText}>Annuler</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, styles.confirmButton, !value && styles.disabled]}
             onPress={handleConfirm}
             disabled={!value}
+            accessibilityRole="button"
           >
             <Text style={styles.confirmText}>Confirmer</Text>
           </TouchableOpacity>

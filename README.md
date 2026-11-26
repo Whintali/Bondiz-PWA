@@ -30,6 +30,7 @@ relancer la commande.
 | `npm run ios` / `npm run android` | Ouvre directement le simulateur ou l'émulateur |
 | `npm run web` | Version web en développement, avec rechargement à chaud |
 | `npm run lint` | ESLint |
+| `npm test` | Tests unitaires (voir plus bas) |
 
 ## Version web installable (PWA)
 
@@ -108,6 +109,72 @@ npm run serve:web
 
 Les notifications fonctionnent sur `localhost` dans Chrome et Firefox. Sur un
 téléphone, il faut une adresse en HTTPS.
+
+## Tests
+
+Tests unitaires avec Jest (`jest-expo/web`, la configuration de la version web)
+et Testing Library pour le DOM.
+
+```bash
+npm test               # toutes les suites
+npm run test:coverage  # avec le rapport de couverture (dossier coverage/)
+npx jest __tests__/pwa # une seule partie
+```
+
+| Dossier | Couvre |
+|---|---|
+| `__tests__/pwa/` | service worker (cache, mode hors ligne, notifications), manifeste et icônes, abonnement aux notifications, enregistrement du service worker, stockage web |
+| `__tests__/services/` | appels à l'API (en-têtes, erreurs en français), activités et réservations |
+| `__tests__/utils/` | photos de profil, favoris, envoi d'images, alertes, calcul de l'âge |
+| `__tests__/components/` | composants de la maquette, barre de navigation, sélecteur de date web, carte d'activité, feuille de réservation |
+
+Le service worker (`public/sw.js`) est exécuté dans un faux contexte de
+service worker (module `vm` de Node) : on lui envoie les mêmes événements que
+le navigateur (`install`, `fetch`, `push`, `notificationclick`).
+
+`jest.setup.ts` remplace les icônes et `expo-image` par de simples éléments
+HTML : ils dépendent d'un module natif absent sous Jest.
+
+### Tests de bout en bout (Playwright)
+
+Les parcours complets tournent dans Chrome (format iPhone, en français) sur le
+build web de production, service worker compris, branché sur un **vrai Strapi
+local** dont la base SQLite est recréée à chaque exécution. Le dépôt
+`strapi-mydsu` doit être cloné à côté de `bondiz-app` avec ses dépendances
+installées.
+
+```bash
+npm run test:e2e                         # toute la suite (≈ 1 min 30)
+npx playwright test e2e/social.spec.ts   # un seul fichier
+npm run test:e2e:report                  # rapport HTML du dernier passage
+E2E_STRAPI_LOGS=1 npm run test:e2e       # avec les journaux de Strapi
+```
+
+| Fichier | Couvre |
+|---|---|
+| `e2e/auth.spec.ts` | accueil, connexion, erreurs, inscription et les 5 étapes du questionnaire, âge minimum, déconnexion |
+| `e2e/social.spec.ts` | découverte, like, match, fiche « À propos », messagerie (non-lus, envoi, réponse reçue), accès refusé |
+| `e2e/activities.spec.ts` | liste, recherche, favoris (gardés sur le compte), fiche activité, réservation avec contacts, « Mes réservations » |
+| `e2e/account.spec.ts` | mot de passe oublié et réinitialisation, export des données, suppression du compte |
+| `e2e/map.spec.ts` | carte des activités, fiche d'un lieu, « Autour de moi » |
+| `e2e/profile.spec.ts` | profil et statistiques, modification, ajout de photo, changement de mot de passe, barre de navigation |
+| `e2e/pwa.spec.ts` | manifeste, service worker, cache, ouverture hors connexion |
+
+Ce que fait `playwright.config.ts` :
+
+- lance Strapi sur le port 1338 avec `.tmp/e2e.db` (jamais la base ni le
+  stockage de prod) ; `e2e/global-setup.ts` y crée un admin et trois
+  activités, `e2e/global-teardown.ts` supprime les fichiers envoyés pendant les
+  tests ;
+- exporte l'app dans `e2e/.dist` avec l'API locale (`--clear` obligatoire :
+  sinon Metro réutilise l'URL du `.env`, donc la prod), puis
+  `e2e/support/check-build.mjs` **refuse de lancer les tests** si le build
+  vise une autre API ;
+- sert ce build avec `e2e/support/serve.mjs`, qui reprend les règles de
+  `docker/nginx.conf` (routes `/chat/:id`, `/user/:id`, `/activity/:id`).
+
+Chaque test crée ses propres comptes (`e2e/support/api.ts`), les tests
+tournent donc en parallèle.
 
 ## Organisation du code
 

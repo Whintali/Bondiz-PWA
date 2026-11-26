@@ -1,33 +1,25 @@
+import BackButton from "@/components/ui/BackButton";
+import HeroIllustration from "@/components/ui/HeroIllustration";
+import OutlinedField from "@/components/ui/OutlinedField";
+import ShadowButton from "@/components/ui/ShadowButton";
 import { COLORS } from "@/constants/Colors";
-import { IMAGES } from "@/constants/Image";
-import { globalStyles } from "@/constants/Styles";
-import { Ionicons } from "@expo/vector-icons";
+import { FONTS } from "@/constants/Fonts";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useAuth } from "../context/AuthContext";
-import Input from "./components/Input";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { register } = useAuth();
-  const [firstName, setFirstName] = useState("");
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleRegister = () => {
-    if (!firstName || !email || !password || !confirmPassword) {
+    if (!email || !password || !confirmPassword) {
       setError("Veuillez remplir tous les champs");
       return;
     }
@@ -42,103 +34,81 @@ export default function RegisterScreen() {
       return;
     }
 
-    // On ne crée pas encore le compte, on passe les données à l'étape suivante
+    const digits = phone.replace(/\D/g, "");
+    if (phone && digits.length < 9) {
+      setError("Le numéro de téléphone est invalide");
+      return;
+    }
+
+    // Le compte est créé à la fin du questionnaire, avec le profil complet.
     router.push({
       pathname: "/questionnaire",
-      params: { firstName, email, password }
+      params: { email, password, phone: digits },
     });
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={globalStyles.container}
-    >
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.replace("/")}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={24} color={COLORS.main} />
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={[styles.hero, { paddingTop: insets.top + 76 }]}>
+          <HeroIllustration scale={0.577} />
+        </View>
+
+        <View style={styles.sheet}>
+          <TouchableOpacity style={styles.backRow} onPress={() => router.replace("/login")}>
+            <BackButton tone="dark" size={32} onPress={() => router.replace("/login")} />
+            <Text style={styles.backText}>Retourner sur la page de connexion</Text>
           </TouchableOpacity>
-        </View>
 
-        <View style={styles.titleContainer}>
-          <Image source={IMAGES.LOGO} style={styles.logo} resizeMode="contain" />
-          
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: "33.33%" }]} />
-          </View>
+          <Text style={styles.title}>S’INSCRIRE</Text>
 
-          <Text style={styles.stepText}>Étape 1/3</Text>
-          <Text style={styles.title}>Créer un compte</Text>
-          <Text style={styles.subtitle}>Rejoignez la communauté bondiz dès aujourd'hui</Text>
-        </View>
-
-        <View style={styles.form}>
           {error && <Text style={styles.errorText}>{error}</Text>}
 
-          <Input
-            label="Prénom"
-            placeholder="Jean"
-            value={firstName}
-            onChangeText={setFirstName}
-            autoCapitalize="words"
-            icon="person-outline"
-          />
-
-          <Input
-            label="Email"
-            placeholder="votre@email.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            icon="mail-outline"
-          />
-
-          <Input
-            label="Mot de passe"
-            placeholder="••••••••"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            icon="lock-closed-outline"
-          />
-          <Text style={styles.passwordHint}>Minimum 8 caractères</Text>
-
-          <Input
-            label="Confirmer le mot de passe"
-            placeholder="••••••••"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            icon="shield-checkmark-outline"
-          />
-
-          <TouchableOpacity
-            style={[
-              globalStyles.ctaButton,
-              styles.registerButton,
-            ]}
-            onPress={handleRegister}
-          >
-            <Text style={globalStyles.ctaText}>
-              Suivant
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Déjà un compte ? </Text>
-            <TouchableOpacity onPress={() => router.push("/login")}>
-              <Text style={styles.footerLink}>Se connecter</Text>
-            </TouchableOpacity>
+          <View style={styles.form}>
+            <OutlinedField
+              tone="dark"
+              width={298}
+              labelOffset={53}
+              label="Adresse mail"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+            />
+            <OutlinedField
+              tone="dark"
+              width={298}
+              labelOffset={53}
+              label="Mot de passe"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoComplete="new-password"
+            />
+            <OutlinedField
+              tone="dark"
+              width={298}
+              labelOffset={53}
+              label="Confirmer le mot de passe"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoComplete="new-password"
+            />
+            <OutlinedField
+              tone="dark"
+              width={298}
+              labelOffset={53}
+              label="Numéro de téléphone"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+            />
           </View>
+
+          <ShadowButton label="S’inscrire" onPress={handleRegister} style={styles.submit} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -146,102 +116,57 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.purple,
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 25,
-    paddingBottom: 40,
   },
-  header: {
-    marginTop: 60,
-    marginBottom: 20,
+  hero: {
+    alignItems: "center",
+    paddingBottom: 62,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
+  sheet: {
+    flexGrow: 1,
+    backgroundColor: "white",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 24,
+    paddingBottom: 54,
     alignItems: "center",
   },
-  titleContainer: {
+  backRow: {
+    alignSelf: "flex-start",
+    marginLeft: 28,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 30,
+    gap: 7,
   },
-  logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 20,
-  },
-  progressBarContainer: {
-    width: "100%",
-    height: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 3,
-    marginBottom: 20,
-    overflow: "hidden",
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: COLORS.cta,
-    borderRadius: 3,
-  },
-  stepText: {
-    color: COLORS.cta,
-    fontFamily: "Poppins_700Bold",
+  backText: {
+    fontFamily: FONTS.medium,
     fontSize: 14,
-    textTransform: "uppercase",
-    marginBottom: 5,
+    color: COLORS.muted,
   },
   title: {
-    fontSize: 32,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 16,
-    fontFamily: "Poppins_400Regular",
-    color: "rgba(255, 255, 255, 0.7)",
-    marginTop: 5,
-    textAlign: "center",
-  },
-  errorText: {
-    color: COLORS.error,
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-    marginBottom: 15,
-    textAlign: "center",
+    marginTop: 25,
+    fontFamily: FONTS.extraBold,
+    fontSize: 20,
+    color: "black",
   },
   form: {
-    marginTop: 10,
+    marginTop: 22,
+    gap: 24,
   },
-  registerButton: {
-    width: "100%",
-    height: 55,
-    borderRadius: 15,
-    marginTop: 20,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
+  submit: {
     marginTop: 30,
   },
-  footerText: {
-    color: "rgba(255, 255, 255, 0.7)",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-  },
-  footerLink: {
-    color: COLORS.cta,
-    fontFamily: "Poppins_700Bold",
-    fontSize: 14,
-  },
-  passwordHint: {
-    color: "rgba(255, 255, 255, 0.5)",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 12,
-    marginTop: -10,
-    marginBottom: 15,
-    paddingLeft: 5,
+  errorText: {
+    marginTop: 12,
+    color: COLORS.error,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    textAlign: "center",
+    maxWidth: 300,
   },
 });

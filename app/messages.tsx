@@ -1,60 +1,80 @@
+import ScreenBackground from "@/components/ui/ScreenBackground";
 import { COLORS } from "@/constants/Colors";
+import { DESIGN } from "@/constants/Design";
+import { FONTS } from "@/constants/Fonts";
 import { useAuth } from "@/context/AuthContext";
-import { apiFetch, STRAPI_BASE_URL } from "@/services/api";
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { apiFetch } from "@/services/api";
+import { displayName, getAvatarUrl } from "@/utils/media";
+import { Image } from "expo-image";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
-  Image,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import BottomNav from "./components/BottomNav";
+
+type Conversation = {
+  matchId: string;
+  matchNumericId: number;
+  name: string;
+  avatar: string | null;
+  lastMessage: string;
+  sentAt: string | null;
+  unread: boolean;
+};
+
+// « 18:18 » aujourd'hui, « hier », sinon « 12/10 ».
+const formatTime = (iso: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (date.toDateString() === yesterday.toDateString()) return "hier";
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+};
 
 const MessagesScreen = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchConversations = async (isRefresh = false) => {
     if (!user || !token) return;
     try {
-      if (!isRefresh) setLoading(true);
-      else setRefreshing(true);
-      
+      if (isRefresh) setRefreshing(true);
       // Le backend renvoie déjà les conversations triées, avec le dernier
       // message et le nombre de messages non lus.
       const res = await apiFetch<any>(`/conversations?pageSize=50`, {}, token);
-
-      const mapped = (res.data || []).map((conv: any) => {
-        const imgUrl = conv.otherUser?.self_image?.[0]?.url || conv.otherUser?.self_image?.url;
-
-        return {
+      setConversations(
+        (res.data || []).map((conv: any) => ({
           matchId: conv.matchDocumentId,
-          otherUserId: conv.otherUser?.id,
-          name: conv.otherUser?.username || "Ami Bondiz",
-          lastMessage: conv.lastMessage?.content || "Nouveau match ! ✨",
-          time: conv.lastMessage
-            ? new Date(conv.lastMessage.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : "",
-          avatar: imgUrl
-            ? (imgUrl.startsWith("http") ? imgUrl : `${STRAPI_BASE_URL}${imgUrl}`)
-            : `https://i.pravatar.cc/150?u=${conv.otherUser?.id}`,
+          matchNumericId: conv.matchId,
+          name: displayName(conv.otherUser),
+          avatar: getAvatarUrl(conv.otherUser),
+          lastMessage:
+            conv.lastMessage?.content ||
+            "Nouvelle connexion ! Dis-lui bonjour ✨",
+          sentAt: conv.lastMessage?.sentAt ?? null,
           unread: conv.unreadCount > 0,
-          unreadCount: conv.unreadCount,
-        };
-      });
-
-      setConversations(mapped);
-
+        })),
+      );
     } catch (error) {
       console.error("Fetch conversations error:", error);
     } finally {
@@ -63,171 +83,264 @@ const MessagesScreen = () => {
     }
   };
 
-  useEffect(() => {
-    fetchConversations();
-  }, []);
-
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.conversationCard}
-      onPress={() => router.push(`/chat/${item.matchId}`)}
-    >
-      <Image source={{ uri: item.avatar }} style={styles.avatar} />
-      <View style={styles.contentContainer}>
-        <Text style={styles.name}>{item.name}</Text>
-        <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage}</Text>
-        <View style={styles.timeRow}>
-          <Ionicons name="chatbubble-outline" size={16} color="white" />
-          <Text style={styles.timeText}>{item.time || "Maintenant"}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [token]),
   );
+
+  // Les connexions les plus récentes d'abord (les matchs ont des id croissants).
+  const recent = [...conversations]
+    .sort((a, b) => b.matchNumericId - a.matchNumericId)
+    .slice(0, 10);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>MESSAGES</Text>
-        <Text style={styles.unreadCount}>Non lus : {conversations.filter(c => c.unread).length}</Text>
-      </View>
+    <View style={styles.container}>
+      <ScreenBackground source={DESIGN.messagesBg} opacity={0.4} />
 
-      {loading ? (
-        <ActivityIndicator size="large" color={COLORS.purple} style={{ marginTop: 50 }} />
-      ) : conversations.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="chatbubbles-outline" size={80} color="#eee" />
-          <Text style={styles.emptyText}>Aucun match pour le moment.</Text>
-          <Text style={styles.emptySubtext}>Allez sur la page d'accueil pour trouver votre partenaire Bondiz ! ✨</Text>
-          <TouchableOpacity 
-            style={styles.homeButton}
-            onPress={() => router.push("/home")}
-          >
-            <Text style={styles.homeButtonText}>Découvrir des profils</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={conversations}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.matchId.toString()}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={() => fetchConversations(true)}
-              tintColor={COLORS.purple}
-            />
-          }
-        />
-      )}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 26 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchConversations(true)}
+            tintColor={COLORS.purple}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>MESSAGES</Text>
+
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={COLORS.purple}
+            style={styles.loader}
+          />
+        ) : (
+          <>
+            {recent.length > 0 && (
+              <>
+                <Text style={styles.recentTitle}>Connexions récentes</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recentRow}
+                >
+                  {recent.map((conversation) => (
+                    <TouchableOpacity
+                      key={conversation.matchId}
+                      style={styles.recentCard}
+                      onPress={() =>
+                        router.push(`/chat/${conversation.matchId}`)
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Discuter avec ${conversation.name}`}
+                    >
+                      {conversation.avatar ? (
+                        <Image
+                          source={{ uri: conversation.avatar }}
+                          style={StyleSheet.absoluteFill}
+                          contentFit="cover"
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
+            <View
+              style={[styles.sheet, { paddingBottom: insets.bottom + 120 }]}
+            >
+              {conversations.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyTitle}>
+                    Aucune conversation pour le moment
+                  </Text>
+                  <Text style={styles.emptyText}>
+                    Like des profils sur l’accueil : quand c’est réciproque,
+                    vous pourrez discuter ici.
+                  </Text>
+                </View>
+              ) : (
+                conversations.map((conversation, index) => (
+                  <React.Fragment key={conversation.matchId}>
+                    {index > 0 && <View style={styles.divider} />}
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={() =>
+                        router.push(`/chat/${conversation.matchId}`)
+                      }
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.avatar}>
+                        {conversation.avatar ? (
+                          <Image
+                            source={{ uri: conversation.avatar }}
+                            style={StyleSheet.absoluteFill}
+                            contentFit="cover"
+                          />
+                        ) : null}
+                      </View>
+                      <View style={styles.rowText}>
+                        <Text style={styles.name} numberOfLines={1}>
+                          {conversation.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.preview,
+                            conversation.unread && styles.previewUnread,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {conversation.lastMessage}
+                        </Text>
+                      </View>
+                      <View style={styles.rowSide}>
+                        {conversation.unread ? (
+                          <Image
+                            source={DESIGN.unreadDot}
+                            style={styles.unreadDot}
+                            accessibilityLabel="Non lu"
+                          />
+                        ) : (
+                          <View style={styles.unreadDot} />
+                        )}
+                        <Text style={styles.time}>
+                          {formatTime(conversation.sentAt)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))
+              )}
+            </View>
+          </>
+        )}
+      </ScrollView>
 
       <BottomNav currentRoute="messages" />
-    </SafeAreaView>
+    </View>
   );
 };
+
+export default MessagesScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  scroll: {
+    flexGrow: 1,
+  },
+  title: {
+    marginTop: 36,
+    fontFamily: FONTS.display,
+    fontSize: 25,
+    color: COLORS.ink,
+    textAlign: "center",
+  },
+  loader: {
+    marginTop: 60,
+  },
+  recentTitle: {
+    marginTop: 32,
+    marginLeft: 29,
+    fontFamily: FONTS.semiBold,
+    fontSize: 15,
+    color: COLORS.ink,
+  },
+  recentRow: {
+    paddingLeft: 51,
+    paddingRight: 20,
+    paddingTop: 13,
+    gap: 18,
+  },
+  recentCard: {
+    width: 88,
+    height: 101,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: COLORS.ink,
+    backgroundColor: "#d9d9d9",
+    overflow: "hidden",
+  },
+  sheet: {
+    flexGrow: 1,
+    marginTop: 25,
     backgroundColor: "white",
-  },
-  header: {
-    paddingHorizontal: 25,
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontFamily: "Poppins_700Bold",
-    color: "black",
-  },
-  unreadCount: {
-    fontSize: 16,
-    fontFamily: "Poppins_600SemiBold",
-    color: "#666",
-    marginTop: 2,
-  },
-  listContent: {
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    paddingTop: 22,
     paddingHorizontal: 20,
-    paddingBottom: 100,
   },
-  conversationCard: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 15,
-    padding: 12,
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
-    boxShadow: "0px 3px 4px rgba(0, 0, 0, 0.2)",
+    paddingVertical: 24,
+    gap: 23,
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
   },
   avatar: {
-    width: 65,
-    height: 65,
-    borderRadius: 10,
-    marginRight: 15,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
+    borderColor: COLORS.ink,
+    backgroundColor: COLORS.border,
+    overflow: "hidden",
   },
-  contentContainer: {
+  rowText: {
     flex: 1,
-    justifyContent: "center",
   },
   name: {
-    fontSize: 18,
-    fontFamily: "Poppins_700Bold",
-    color: "white",
-    marginBottom: 2,
+    fontFamily: FONTS.bold,
+    fontSize: 20,
+    color: COLORS.purple,
   },
-  lastMessage: {
+  preview: {
+    fontFamily: FONTS.regular,
     fontSize: 14,
-    fontFamily: "Poppins_500Medium",
-    color: "white",
-    opacity: 0.9,
-    marginBottom: 4,
+    color: "rgba(0, 0, 36, 0.6)",
   },
-  timeRow: {
-    flexDirection: "row",
+  previewUnread: {
+    fontFamily: FONTS.semiBold,
+    color: "rgba(0, 0, 36, 0.95)",
+  },
+  rowSide: {
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  unreadDot: {
+    width: 15,
+    height: 15,
+  },
+  time: {
+    fontFamily: FONTS.regular,
+    fontSize: 14,
+    color: "rgba(0, 0, 36, 0.3)",
+  },
+  empty: {
+    paddingTop: 40,
     alignItems: "center",
+    gap: 8,
   },
-  timeText: {
-    fontSize: 12,
-    fontFamily: "Poppins_400Regular",
-    color: "white",
-    marginLeft: 5,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 40,
-    marginTop: -50,
+  emptyTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 17,
+    color: COLORS.purple,
+    textAlign: "center",
   },
   emptyText: {
-    fontSize: 20,
-    fontFamily: "Poppins_700Bold",
-    color: "#333",
-    marginTop: 20,
-    textAlign: "center",
-  },
-  emptySubtext: {
+    fontFamily: FONTS.regular,
     fontSize: 14,
-    fontFamily: "Poppins_400Regular",
-    color: "#999",
+    color: "rgba(0, 0, 36, 0.6)",
     textAlign: "center",
-    marginTop: 10,
-    lineHeight: 20,
-  },
-  homeButton: {
-    backgroundColor: COLORS.purple,
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginTop: 30,
-  },
-  homeButtonText: {
-    color: "white",
-    fontFamily: "Poppins_700Bold",
-    fontSize: 16,
   },
 });
-
-export default MessagesScreen;

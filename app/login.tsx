@@ -1,24 +1,18 @@
+import BackButton from "@/components/ui/BackButton";
+import HeroIllustration from "@/components/ui/HeroIllustration";
+import OutlinedField from "@/components/ui/OutlinedField";
+import ShadowButton from "@/components/ui/ShadowButton";
 import { COLORS } from "@/constants/Colors";
-import { IMAGES } from "@/constants/Image";
-import { globalStyles } from "@/constants/Styles";
-import { Ionicons } from "@expo/vector-icons";
+import { FONTS } from "@/constants/Fonts";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
-import Input from "./components/Input";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +29,6 @@ export default function LoginScreen() {
       setIsSubmitting(true);
       setError(null);
       await login(email, password);
-      // La navigation se fera probablement automatiquement via un state global ou manuellement ici
       router.replace("/");
     } catch (err: any) {
       setError(err.message || "Erreur de connexion");
@@ -45,75 +38,44 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={globalStyles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.replace("/")}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={24} color={COLORS.main} />
-          </TouchableOpacity>
-        </View>
+        <BackButton style={styles.back} onPress={() => router.replace("/welcome")} />
 
-        <View style={styles.logoContainer}>
-          <Image source={IMAGES.LOGO} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.subtitle}>Connectez-vous pour continuer</Text>
-        </View>
+        <HeroIllustration />
 
         <View style={styles.form}>
           {error && <Text style={styles.errorText}>{error}</Text>}
 
-          <Input
-            label="Email"
-            placeholder="votre@email.com"
+          <OutlinedField
+            label="Adresse mail"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            icon="mail-outline"
+            autoComplete="email"
           />
-
-          <Input
+          <OutlinedField
             label="Mot de passe"
-            placeholder="••••••••"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            icon="lock-closed-outline"
+            autoComplete="password"
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
-            style={[
-              globalStyles.ctaButton,
-              styles.loginButton,
-              isSubmitting && { opacity: 0.7 }
-            ]}
-            onPress={handleLogin}
-            disabled={isSubmitting}
+            onPress={() => router.push({ pathname: "/forgot-password", params: email ? { email } : {} })}
+            accessibilityRole="link"
+            style={styles.forgot}
           >
-            <Text style={globalStyles.ctaText}>
-              {isSubmitting ? "Connexion..." : "Se connecter"}
-            </Text>
+            <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
           </TouchableOpacity>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Pas encore de compte ? </Text>
-            <TouchableOpacity onPress={() => router.push("/register")}>
-              <Text style={styles.footerLink}>S'inscrire</Text>
-            </TouchableOpacity>
-          </View>
+          <ShadowButton label="Connexion" onPress={handleLogin} loading={isSubmitting} style={styles.submit} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -121,82 +83,48 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.purple,
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 25,
+    alignItems: "center",
+    justifyContent: "center",
     paddingBottom: 40,
   },
-  header: {
-    marginTop: 60,
-    marginBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: "Poppins_700Bold",
-    color: COLORS.main,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 14,
-    fontFamily: "Poppins_400Regular",
-    color: "rgba(255, 255, 255, 0.7)",
-    textAlign: "center",
-    marginTop: 5,
+  back: {
+    position: "absolute",
+    left: 34,
+    top: 36,
   },
   form: {
-    marginTop: 10,
+    marginTop: 59,
+    gap: 24,
+    alignItems: "center",
   },
-  forgotPassword: {
+  submit: {
+    marginTop: 2,
+  },
+  forgot: {
+    marginTop: -12,
     alignSelf: "flex-end",
-    marginBottom: 30,
   },
-  forgotPasswordText: {
-    color: COLORS.cta,
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
+  forgotText: {
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    color: "white",
+    textDecorationLine: "underline",
   },
   errorText: {
-    color: COLORS.error,
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-    marginBottom: 15,
+    color: "white",
+    backgroundColor: "rgba(0, 0, 36, 0.25)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
     textAlign: "center",
-  },
-  loginButton: {
-    width: "100%",
-    height: 55,
-    borderRadius: 15,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 30,
-  },
-  footerText: {
-    color: "rgba(255, 255, 255, 0.7)",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-  },
-  footerLink: {
-    color: COLORS.cta,
-    fontFamily: "Poppins_700Bold",
-    fontSize: 14,
+    maxWidth: 300,
   },
 });

@@ -1,10 +1,11 @@
-import { IMAGES } from "@/constants/Image";
-import { globalStyles } from "@/constants/Styles";
-import React, { useEffect } from "react";
-import { Image, StyleSheet, Text, View, TouchableOpacity, StatusBar } from "react-native";
-import { useRouter } from "expo-router";
-import { useAuth } from "../context/AuthContext";
+import HeroIllustration from "@/components/ui/HeroIllustration";
+import ShadowButton from "@/components/ui/ShadowButton";
 import { COLORS } from "@/constants/Colors";
+import { FONTS } from "@/constants/Fonts";
+import { useRouter } from "expo-router";
+import React, { useEffect } from "react";
+import { StatusBar, StyleSheet, Text, View } from "react-native";
+import { useAuth } from "../context/AuthContext";
 
 const WelcomeScreen = () => {
   const router = useRouter();
@@ -17,26 +18,15 @@ const WelcomeScreen = () => {
   }, [user]);
 
   return (
-    <View style={[globalStyles.container, globalStyles.center, styles.container]}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <Image source={IMAGES.LOGO} style={styles.logo} resizeMode="contain" />
-      
-      <Text style={styles.tagline}>Rencontrez du monde pour vos activités !</Text>
-      
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[globalStyles.ctaButton, styles.loginButton]}
-          onPress={() => router.push("/login")}
-        >
-          <Text style={globalStyles.ctaText}>Se connecter</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[globalStyles.ctaButton, globalStyles.secondaryButton, styles.registerButton]}
-          onPress={() => router.push("/register")}
-        >
-          <Text style={[globalStyles.ctaText, globalStyles.secondaryText]}>S'inscrire</Text>
-        </TouchableOpacity>
+      <HeroIllustration />
+
+      <Text style={styles.tagline}>{"Rencontrez des personnes qui partagent vos\ncentres d’intérêt"}</Text>
+
+      <View style={styles.buttons}>
+        <ShadowButton label="Se connecter" variant="white" onPress={() => router.push("/login")} />
+        <ShadowButton label="S’inscrire" onPress={() => router.push("/register")} />
       </View>
     </View>
   );
@@ -46,32 +36,23 @@ export default WelcomeScreen;
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 40,
-  },
-  logo: {
-    width: 250,
-    height: 250,
-    marginBottom: 20,
+    flex: 1,
+    backgroundColor: COLORS.purple,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 45,
   },
   tagline: {
-    fontSize: 18,
-    fontFamily: "Poppins_400Regular",
+    marginTop: 46,
+    width: 312,
+    fontFamily: FONTS.bold,
+    fontSize: 23,
+    lineHeight: 32,
     color: "white",
     textAlign: "center",
-    marginBottom: 60,
-    opacity: 0.8,
   },
-  buttonContainer: {
-    width: "100%",
-    alignItems: "center",
-  },
-  loginButton: {
-    marginBottom: 15,
-    height: 60,
-    borderRadius: 30,
-  },
-  registerButton: {
-    height: 60,
-    borderRadius: 30,
+  buttons: {
+    marginTop: 47,
+    gap: 15,
   },
 });
