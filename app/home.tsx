@@ -47,13 +47,29 @@ const HomeScreen = () => {
     fetchUsers();
   }, [user]);
 
+  // /discover/pools renvoie les profils recommandés, calculés dans Redis.
+  // Liste vide en cas d'échec, pour que fetchUsers passe au repli.
+  const fetchPool = async (): Promise<any[]> => {
+    try {
+      const res = await apiFetch<any>(`/discover/pools`, {}, token!);
+      return Array.isArray(res.data) ? res.data.filter((profil: any) => profil?.id) : [];
+    } catch (error) {
+      console.warn("Pool Redis indisponible", error);
+      return [];
+    }
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      // /discover renvoie les profils à découvrir : sans soi-même,
-      // sans les profils déjà likés et sans les comptes bloqués.
-      const res = await apiFetch<any>(`/discover?pageSize=50`, {}, token!);
-      setUsers(res.data || []);
+      let profils = await fetchPool();
+      if (profils.length === 0) {
+        // Repli : /discover renvoie les profils à découvrir : sans soi-même,
+        // sans les profils déjà likés et sans les comptes bloqués.
+        const res = await apiFetch<any>(`/discover?pageSize=50`, {}, token!);
+        profils = res.data || [];
+      }
+      setUsers(profils);
       setSentLikeIds([]);
     } catch (error) {
       console.error("Failed to fetch users", error);
